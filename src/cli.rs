@@ -11,9 +11,15 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub repo: Option<PathBuf>,
 
-    /// Output format: text or json
+    /// Output format
     #[arg(long, global = true, default_value = "text")]
-    pub format: String,
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Clone, clap::ValueEnum)]
+pub enum OutputFormat {
+    Json,
+    Text,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -78,6 +84,6 @@ impl Cli {
     }
 
     pub fn is_json(&self) -> bool {
-        self.format == "json"
+        matches!(self.format, OutputFormat::Json)
     }
 }
