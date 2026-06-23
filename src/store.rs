@@ -119,9 +119,10 @@ pub fn store(
     let commit = current_commit(repo)?;
     let name = repo_name(repo);
 
-    // Generate ID from content hash (first 12 chars)
+    // Generate ID from content hash + tag (ensures uniqueness per tag)
     let mut hasher = Sha256::new();
     hasher.update(&data);
+    hasher.update(tag.as_bytes());
     let full_hash = format!("{:x}", hasher.finalize());
     let id = format!("{}_{}", &commit[..8.min(commit.len())], &full_hash[..8]);
 
