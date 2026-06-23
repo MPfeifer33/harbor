@@ -3,7 +3,7 @@ mod report;
 mod store;
 
 use clap::Parser;
-use cli::{Cli, Command};
+use cli::{Cli, Command, OutputFormat};
 
 fn main() {
     let cli = Cli::parse();
@@ -12,7 +12,7 @@ fn main() {
         Ok(()) => {}
         Err(e) => {
             let code = e.exit_code();
-            if cli.is_json() {
+            if matches!(cli.format, OutputFormat::Json) {
                 let err_json = serde_json::json!({
                     "ok": false,
                     "error": {
@@ -20,7 +20,12 @@ fn main() {
                         "message": e.to_string(),
                     }
                 });
-                eprintln!("{}", serde_json::to_string_pretty(&err_json).unwrap_or_else(|_| format!("{{\"ok\":false,\"error\":{{\"message\":\"{e}\"}}}}")));
+                eprintln!(
+                    "{}",
+                    serde_json::to_string_pretty(&err_json).unwrap_or_else(|_| format!(
+                        "{{\"ok\":false,\"error\":{{\"message\":\"{e}\"}}}}"
+                    ))
+                );
             } else {
                 eprintln!("error: {e}");
             }
@@ -34,33 +39,28 @@ fn run(cli: &Cli) -> Result<(), HarborError> {
 
     match &cli.command {
         Command::Store { tag, file, desc } => {
-            let artifact = store::store(
-                &repo,
-                tag,
-                file.as_deref(),
-                desc.as_deref(),
-            )?;
-            report::print_stored(&artifact, cli.is_json())
+            let artifact = store::store(&repo, tag, file.as_deref(), desc.as_deref())?;
+            report::print_stored(&artifact, cli.format)
         }
         Command::List { commit, tag } => {
-            let artifacts = store::list(
-                &repo,
-                commit.as_deref(),
-                tag.as_deref(),
-            )?;
-            report::print_list(&artifacts, cli.is_json())
+            let artifacts = store::list(&repo, commit.as_deref(), tag.as_deref())?;
+            report::print_list(&artifacts, cli.format)
         }
         Command::Show { id } => {
             let (artifact, content) = store::show(&repo, id)?;
-            report::print_show(&artifact, &content, cli.is_json())
+            report::print_show(&artifact, &content, cli.format)
         }
-        Command::Clean { older_than, keep, dry_run } => {
+        Command::Clean {
+            older_than,
+            keep,
+            dry_run,
+        } => {
             let removed = store::clean(&repo, *older_than, *keep, *dry_run)?;
-            report::print_clean(&removed, *dry_run, cli.is_json())
+            report::print_clean(&removed, *dry_run, cli.format)
         }
         Command::Stats => {
             let s = store::stats(&repo)?;
-            report::print_stats(&s, cli.is_json())
+            report::print_stats(&s, cli.format)
         }
     }
 }

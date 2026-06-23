@@ -1,13 +1,14 @@
-use std::path::{Path, PathBuf};
-use std::io::Read;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
+use std::io::{IsTerminal, Read};
+use std::path::{Path, PathBuf};
 
 use crate::HarborError;
 
 const HARBOR_DIR: &str = ".harbor";
 const INDEX_FILE: &str = "index.json";
+const NO_STDIN_MESSAGE: &str = "No input. Provide --file or pipe data to stdin.";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Artifact {
@@ -105,14 +106,9 @@ pub fn store(
     let data = match file {
         Some(path) => std::fs::read(path)?,
         None => {
-            let mut buf = Vec::new();
-            std::io::stdin().read_to_end(&mut buf)?;
-            if buf.is_empty() {
-                return Err(HarborError::Validation(
-                    "No input data. Provide --file or pipe to stdin.".into(),
-                ));
-            }
-            buf
+            let mut stdin = std::io::stdin();
+            let input_is_terminal = stdin.is_terminal();
+            read_stdin_data(&mut stdin, input_is_terminal)?
         }
     };
 
@@ -147,6 +143,23 @@ pub fn store(
     save_index(repo, &index)?;
 
     Ok(artifact)
+}
+
+fn read_stdin_data<R: Read>(
+    reader: &mut R,
+    input_is_terminal: bool,
+) -> Result<Vec<u8>, HarborError> {
+    if input_is_terminal {
+        return Err(HarborError::Validation(NO_STDIN_MESSAGE.into()));
+    }
+
+    let mut buf = Vec::new();
+    reader.read_to_end(&mut buf)?;
+    if buf.is_empty() {
+        return Err(HarborError::Validation(NO_STDIN_MESSAGE.into()));
+    }
+
+    Ok(buf)
 }
 
 /// List artifacts with optional filters
@@ -189,8 +202,7 @@ pub fn show(repo: &Path, id: &str) -> Result<(Artifact, String), HarborError> {
         .clone();
 
     let blob = blob_path(repo, &artifact.id);
-    let content = std::fs::read_to_string(&blob)
-        .unwrap_or_else(|_| "(binary data)".into());
+    let content = std::fs::read_to_string(&blob).unwrap_or_else(|_| "(binary data)".into());
 
     Ok((artifact, content))
 }
@@ -383,5 +395,26 @@ mod tests {
         assert_eq!(s.artifact_count, 2);
         assert_eq!(s.unique_tags, 2);
         assert_eq!(s.unique_commits, 1);
+    }
+
+    #[test]
+    fn stdin_data_rejects_terminal_input() {
+        let mut input = std::io::Cursor::new(b"data".to_vec());
+        let err = read_stdin_data(&mut input, true).unwrap_err();
+        assert_eq!(err.to_string(), NO_STDIN_MESSAGE);
+    }
+
+    #[test]
+    fn stdin_data_rejects_empty_pipe() {
+        let mut input = std::io::Cursor::new(Vec::new());
+        let err = read_stdin_data(&mut input, false).unwrap_err();
+        assert_eq!(err.to_string(), NO_STDIN_MESSAGE);
+    }
+
+    #[test]
+    fn stdin_data_accepts_piped_bytes() {
+        let mut input = std::io::Cursor::new(b"artifact".to_vec());
+        let data = read_stdin_data(&mut input, false).unwrap();
+        assert_eq!(data, b"artifact");
     }
 }

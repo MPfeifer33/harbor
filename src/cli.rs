@@ -2,7 +2,10 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "harbor", about = "Local build artifact warehouse — stores outputs by repo+commit for agent recall")]
+#[command(
+    name = "harbor",
+    about = "Local build artifact warehouse — stores outputs by repo+commit for agent recall"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -16,10 +19,10 @@ pub struct Cli {
     pub format: OutputFormat,
 }
 
-#[derive(Debug, Clone, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum OutputFormat {
-    Json,
     Text,
+    Json,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -82,8 +85,22 @@ impl Cli {
             None => std::env::current_dir().map_err(|e| e.into()),
         }
     }
+}
 
-    pub fn is_json(&self) -> bool {
-        matches!(self.format, OutputFormat::Json)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn rejects_unknown_output_format() {
+        let result = Cli::try_parse_from(["harbor", "--format", "yaml", "stats"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_json_output_format() {
+        let cli = Cli::try_parse_from(["harbor", "--format", "json", "stats"]).unwrap();
+        assert_eq!(cli.format, OutputFormat::Json);
     }
 }
